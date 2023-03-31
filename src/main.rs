@@ -38,45 +38,80 @@ fn hash_permutation(permutation: &[char]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn deep_first_search(permutation_inicial: &[char]) -> Vec<char> {
-    let n = permutation_inicial.len();
-    let mut visitados = HashSet::new();
+fn deep_first_search_recursive(
+    permutation: Vec<char>,
+    visitados: &mut HashSet<String>,
+    d: &mut HashMap<String, usize>,
+    p: &mut HashMap<String, Vec<char>>,
+    stack: &mut Vec<(Vec<char>, usize, usize)>,
+    level: usize,
+) -> Vec<char> {
+    let n = permutation.len();
+    let permutation_hash = hash_permutation(&permutation);
+    visitados.insert(permutation_hash.clone());
 
+    if is_pancake_sorted(&permutation) {
+        // si se encuentra la permutación ordenada, se detiene la búsqueda
+        println!("NÚMERO DE NODOS EXPANDIDOS: {}", visitados.len());
+        println!("NIVEL: {}", level);
+        println!("NÚMERO DE NODOS EN LA COLA: {}", stack.len());
+        return permutation;
+    }
+
+    for i in 2..=n {
+        let mut sucesor = permutation.clone();
+        flip_pancakes(&mut sucesor, i - 1);
+        let sucesor_hash = hash_permutation(&sucesor);
+        if !visitados.contains(&sucesor_hash) {
+            visitados.insert(sucesor_hash.clone());
+            d.insert(sucesor_hash.clone(), d[&permutation_hash] + 1);
+            p.insert(sucesor_hash.clone(), permutation.clone());
+            stack.push((sucesor.clone(), i - 1, level + 1));
+            let result = deep_first_search_recursive(
+                sucesor,
+                visitados,
+                d,
+                p,
+                stack,
+                level + 1,
+            );
+            if is_pancake_sorted(&result) {
+                return result;
+            }
+        }
+    }
+
+    // si no se encuentra la permutación ordenada, devuelve la permutación inicial
+    permutation
+}
+
+//
+fn deep_first_search(permutation_inicial: &[char]) -> Vec<char> {
+    let mut visitados = HashSet::new();
     visitados.insert(hash_permutation(permutation_inicial));
+
     let mut stack = Vec::new();
     stack.push((permutation_inicial.to_owned(), 0, 0));
+
     let mut d = HashMap::<String, usize>::new();
     let mut p = HashMap::<String, Vec<char>>::new();
-
     let initial_permutation_hash = hash_permutation(permutation_inicial);
     d.insert(initial_permutation_hash.clone(), 0);
     p.insert(initial_permutation_hash.clone(), permutation_inicial.to_vec());
 
-    while let Some((permutation, index, level)) = stack.pop() {
-        if is_pancake_sorted(&permutation) {
-            // si se encuentra la permutación ordenada, se detiene la búsqueda
-            println!("NÚMERO DE NODOS EXPANDIDOS: {}", visitados.len());
-            println!("NIVEL: {}", level);
-            println!("NÚMERO DE NODOS EN LA COLA: {}", stack.len());
-            println!("INDICE: {}", index);
-            return permutation;
-        }
-        for i in 2..=n {
-            let mut sucesor = permutation.clone();
-            flip_pancakes(&mut sucesor, i - 1);
-            let sucesor_hash = hash_permutation(&sucesor);
-            if !visitados.contains(&sucesor_hash) {
-                visitados.insert(sucesor_hash.clone());
-                d.insert(sucesor_hash.clone(), d[&hash_permutation(&permutation)] + 1);
-                p.insert(sucesor_hash.clone(), permutation.clone());
-                stack.push((sucesor, i - 1, level + 1));
-            }
-        }
-    }
-    // si no se encuentra la permutación ordenada, devuelve la permutación inicial
-    permutation_inicial.to_vec()
+    let result = deep_first_search_recursive(
+        permutation_inicial.to_vec(),
+        &mut visitados,
+        &mut d,
+        &mut p,
+        &mut stack,
+        0,
+    );
+
+    result
 }
 
+//Con 10 caracteres causa overflow, puse un stack de 500mb pero se necesita mas por la cantidad de nodos a visitar en 10 caracteres.
 fn main() {
     let mut n = String::new();
     println!("Ingrese el numero de caracteres de pancakes: ");
@@ -84,5 +119,13 @@ fn main() {
     let n = n.trim().parse::<usize>().unwrap();
     let pancakes = fill_pancakes(n);
     println!("Pancakes generados: {:?}", pancakes);
-    deep_first_search(&pancakes);
+
+    std::thread::Builder::new()
+        .stack_size(500 * 1024 * 1024) // Crea un stack de 50mb para la memoria porque si no causa overflow
+        .spawn(move || {
+            deep_first_search(&pancakes);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
